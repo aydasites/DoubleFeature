@@ -1130,19 +1130,14 @@ html, body {
   letter-spacing: 2px;
   cursor: pointer;
   transition: all 0.3s;
-  opacity: 0.4;
-  transform: scale(0.98);
-}
-.inline-save-btn.show {
-  opacity: 1;
-  transform: scale(1);
   box-shadow: 0 4px 15px rgba(255,170,0,0.3);
 }
-.inline-save-btn.show:hover {
+.inline-save-btn:hover {
   box-shadow: 0 4px 20px rgba(255,170,0,0.5);
 }
 .inline-save-btn.saved {
   background: var(--neon-green);
+  color: #000;
   box-shadow: 0 4px 15px rgba(57,255,20,0.4);
 }
 
@@ -1473,9 +1468,9 @@ function showIntro() {
   document.getElementById('intro-enter').addEventListener('click', () => {
     screen.style.opacity = '0';
     screen.style.transition = 'opacity 0.5s';
-    setTimeout(() => {
+    setTimeout(async () => {
       screen.style.display = 'none';
-      showBoard();
+      await showBoard();
     }, 500);
   });
 }
@@ -1492,16 +1487,21 @@ async function loadEntries() {
   // Try GitHub first
   try {
     const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`, {
-      headers: { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }
+      headers: { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
+      cache: 'no-store'
     });
     if (res.ok) {
       const data = await res.json();
       ghSha = data.sha;
-      const decoded = atob(data.content.replace(/\n/g, ''));
+      const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
       entries = JSON.parse(decoded);
-      // Update local cache
       localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
+      console.log('✓ Loaded from GitHub:', entries.length, 'entries');
       return;
+    } else if (res.status === 404) {
+      console.log('movies.json not found on GitHub yet — will create on first save');
+    } else {
+      console.error('GitHub load error:', res.status);
     }
   } catch (err) {
     console.warn('GitHub fetch failed, using local cache:', err);
@@ -1510,16 +1510,18 @@ async function loadEntries() {
   const saved = localStorage.getItem('doublefeature_entries');
   if (saved) {
     entries = JSON.parse(saved);
+    console.log('✓ Loaded from cache:', entries.length, 'entries');
   }
 }
 
 async function saveEntries() {
-  // Always update local cache immediately
+  // Always save locally first
   localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
   
-  // Push to GitHub
+  // Sync to GitHub
   try {
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(entries, null, 2))));
+    const jsonStr = JSON.stringify(entries, null, 2);
+    const content = btoa(unescape(encodeURIComponent(jsonStr)));
     const body = {
       message: `update movies.json — ${new Date().toLocaleDateString('en-IN')}`,
       content: content
@@ -1539,8 +1541,17 @@ async function saveEntries() {
     if (res.ok) {
       const data = await res.json();
       ghSha = data.content.sha;
+      console.log('✓ Saved to GitHub');
     } else {
-      console.error('GitHub save failed:', res.status, await res.text());
+      const errText = await res.text();
+      console.error('GitHub save failed:', res.status, errText);
+      // If SHA mismatch (409), re-fetch and retry once
+      if (res.status === 409) {
+        console.log('SHA conflict — refetching...');
+        await loadEntries();
+        // Merge: our local changes win
+        localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
+      }
     }
   } catch (err) {
     console.error('GitHub save error:', err);
@@ -1686,11 +1697,6 @@ function openDetail(id) {
   
   document.getElementById('detail-overlay').classList.add('open');
   document.getElementById('detail-sheet').classList.add('open');
-  
-  // Show save button when note changes
-  document.getElementById('my-note').addEventListener('input', () => {
-    document.getElementById('save-btn').classList.add('show');
-  });
   tappedRating = myRating;
 }
 
@@ -1701,8 +1707,6 @@ function tapStar(id, n) {
   document.querySelectorAll('#my-stars .tap-star').forEach((s, i) => {
     s.classList.toggle('lit', i < n);
   });
-  // Show save button
-  document.getElementById('save-btn').classList.add('show');
 }
 
 async function saveMyRating(id) {
@@ -1731,7 +1735,6 @@ async function saveMyRating(id) {
   setTimeout(() => {
     btn.textContent = 'SAVE';
     btn.classList.remove('saved');
-    btn.classList.remove('show');
     tappedRating = 0;
   }, 800);
 }
