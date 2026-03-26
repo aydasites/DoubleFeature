@@ -1312,6 +1312,12 @@ const TMDB_KEY = 'f59a00c8f60f356c8f909856624685d7';
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w500';
 const PINS = { '0511': 'Adya', '1206': 'Vishak' };
 
+// GitHub sync config
+const GH_TOKEN = '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';
+const GH_REPO = 'aydasites/DoubleFeature';
+const GH_FILE = 'movies.json';
+let ghSha = null; // tracks the file SHA for updates
+
 let currentUser = '';
 let entries = [];
 let currentSort = 'rating';
@@ -1458,27 +1464,70 @@ function showIntro() {
 }
 
 // ═══════════════════ BOARD ═══════════════════
-function showBoard() {
+async function showBoard() {
   document.getElementById('main-board').style.display = 'flex';
   document.getElementById('board-user').textContent = currentUser;
-  loadEntries();
+  await loadEntries();
   renderBoard();
 }
 
-function loadEntries() {
-  // Clear legacy mock data from earlier versions
-  if (!localStorage.getItem('doublefeature_v3')) {
-    localStorage.removeItem('doublefeature_entries');
-    localStorage.setItem('doublefeature_v3', '1');
+async function loadEntries() {
+  // Try GitHub first
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`, {
+      headers: { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      ghSha = data.sha;
+      const decoded = atob(data.content.replace(/\n/g, ''));
+      entries = JSON.parse(decoded);
+      // Update local cache
+      localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
+      return;
+    }
+  } catch (err) {
+    console.warn('GitHub fetch failed, using local cache:', err);
   }
+  // Fallback to localStorage
   const saved = localStorage.getItem('doublefeature_entries');
   if (saved) {
     entries = JSON.parse(saved);
   }
 }
 
-function saveEntries() {
+async function saveEntries() {
+  // Always update local cache immediately
   localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
+  
+  // Push to GitHub
+  try {
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(entries, null, 2))));
+    const body = {
+      message: `update movies.json — ${new Date().toLocaleDateString('en-IN')}`,
+      content: content
+    };
+    if (ghSha) body.sha = ghSha;
+    
+    const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${GH_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      ghSha = data.content.sha;
+    } else {
+      console.error('GitHub save failed:', res.status, await res.text());
+    }
+  } catch (err) {
+    console.error('GitHub save error:', err);
+  }
 }
 
 function getAllGenres() {
@@ -1655,7 +1704,7 @@ function openEditRating(id) {
   divider.insertAdjacentHTML('afterend', editHtml);
 }
 
-function saveEditRating(id) {
+async function saveEditRating(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
   const rating = parseInt(document.querySelector('input[name="edit-stars"]:checked')?.value || 0);
@@ -1669,7 +1718,7 @@ function saveEditRating(id) {
     e.vishakNote = note;
   }
   
-  saveEntries();
+  await saveEntries();
   renderBoard();
   openDetail(id); // refresh the detail view
 }
@@ -1803,7 +1852,7 @@ document.getElementById('event-image').addEventListener('input', function() {
 });
 
 // ═══════════════════ SUBMIT ═══════════════════
-function submitEntry() {
+async function submitEntry() {
   const adyaRating = parseInt(document.querySelector('input[name="adya"]:checked')?.value || 0);
   const vishakRating = parseInt(document.querySelector('input[name="vishak"]:checked')?.value || 0);
   
@@ -1847,7 +1896,7 @@ function submitEntry() {
   }
   
   entries.unshift(entry);
-  saveEntries();
+  await saveEntries();
   
   // Green flash
   const btn = document.getElementById('submit-btn');
