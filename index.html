@@ -689,11 +689,11 @@ html, body {
   display: flex; gap: 20px; margin-bottom: 12px;
 }
 .sheet-rating-card {
-  flex: 1;
   background: rgba(255,255,255,0.03);
   border-radius: 10px;
   padding: 12px;
   border: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 10px;
 }
 .sheet-rating-name {
   font-family: 'VT323', monospace;
@@ -1064,70 +1064,87 @@ html, body {
   font-style: italic;
 }
 
-/* Edit rating button */
-.edit-rating-btn {
-  width: 100%;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.03);
-  color: var(--text-muted);
-  font-family: 'VT323', monospace;
-  font-size: 1rem;
-  letter-spacing: 2px;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 12px;
+/* Tap-to-rate stars */
+.tap-stars {
+  display: flex;
+  gap: 6px;
 }
-.edit-rating-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(255,170,0,0.05);
+.tap-star {
+  font-size: 1.6rem;
+  color: rgba(255,255,255,0.12);
+  cursor: pointer;
+  transition: color 0.15s, transform 0.15s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tap-star:hover { transform: scale(1.2); }
+.tap-star.lit {
+  color: var(--neon-yellow);
+  text-shadow: 0 0 8px rgba(255,230,0,0.4);
 }
 
-/* Inline edit UI */
-.edit-inline {
-  padding: 16px 0 4px;
+/* Editable card */
+.editable-card {
+  border: 1px dashed rgba(255,170,0,0.2) !important;
+  background: rgba(255,170,0,0.03) !important;
 }
-.edit-inline-title {
-  font-family: 'VT323', monospace;
-  font-size: 1.1rem;
+.edit-hint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin-left: 6px;
+  letter-spacing: 0;
+  font-weight: 400;
+  text-transform: lowercase;
+}
+
+/* Inline note */
+.inline-note {
+  width: 100%;
+  padding: 8px 10px;
+  margin-top: 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
   color: var(--text-primary);
-  margin-bottom: 10px;
-  letter-spacing: 1px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.2s;
 }
-.edit-inline-actions {
-  display: flex; gap: 8px;
-  margin-top: 12px;
-}
-.edit-save-btn {
-  flex: 1;
+.inline-note:focus { border-color: rgba(255,170,0,0.3); }
+.inline-note::placeholder { color: rgba(255,255,255,0.15); }
+
+/* Inline save button */
+.inline-save-btn {
+  width: 100%;
   padding: 10px;
+  margin-top: 10px;
   border-radius: 8px;
   border: none;
-  background: var(--neon-green);
+  background: var(--accent);
   color: #000;
   font-family: 'VT323', monospace;
   font-size: 1.1rem;
   letter-spacing: 2px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
+  opacity: 0.4;
+  transform: scale(0.98);
 }
-.edit-save-btn:hover { box-shadow: 0 0 15px rgba(57,255,20,0.4); }
-.edit-cancel-btn {
-  flex: 1;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: 'VT323', monospace;
-  font-size: 1.1rem;
-  letter-spacing: 2px;
-  cursor: pointer;
-  transition: all 0.2s;
+.inline-save-btn.show {
+  opacity: 1;
+  transform: scale(1);
+  box-shadow: 0 4px 15px rgba(255,170,0,0.3);
 }
-.edit-cancel-btn:hover { border-color: var(--text-muted); }
+.inline-save-btn.show:hover {
+  box-shadow: 0 4px 20px rgba(255,170,0,0.5);
+}
+.inline-save-btn.saved {
+  background: var(--neon-green);
+  box-shadow: 0 4px 15px rgba(57,255,20,0.4);
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
@@ -1615,15 +1632,24 @@ function openDetail(id) {
   if (!e) return;
   detailEntryId = id;
   
+  const isAdya = currentUser === 'Adya';
   const aRated = e.adyaRating > 0;
   const vRated = e.vishakRating > 0;
-  const starsA = aRated ? '★'.repeat(e.adyaRating) + '☆'.repeat(5-e.adyaRating) : '—';
-  const starsV = vRated ? '★'.repeat(e.vishakRating) + '☆'.repeat(5-e.vishakRating) : '—';
   const diff = (aRated && vRated) ? Math.abs(e.adyaRating - e.vishakRating) : 0;
   
-  const isAdya = currentUser === 'Adya';
-  const canEditOwn = (isAdya && !aRated) || (!isAdya && !vRated);
-  const editLabel = canEditOwn ? 'ADD YOUR RATING' : 'EDIT YOUR RATING';
+  // Other person's card (read-only)
+  const otherName = isAdya ? 'Vishak' : 'Adya';
+  const otherRating = isAdya ? e.vishakRating : e.adyaRating;
+  const otherNote = isAdya ? e.vishakNote : e.adyaNote;
+  const otherRated = otherRating > 0;
+  const otherStars = otherRated ? '★'.repeat(otherRating) + '☆'.repeat(5-otherRating) : '';
+  
+  // Current user's rating (editable)
+  const myRating = isAdya ? (e.adyaRating || 0) : (e.vishakRating || 0);
+  const myNote = isAdya ? (e.adyaNote || '') : (e.vishakNote || '');
+  const myStarsHtml = [1,2,3,4,5].map(n => 
+    `<span class="tap-star ${n <= myRating ? 'lit' : ''}" onclick="tapStar(${id},${n})">★</span>`
+  ).join('');
   
   document.getElementById('detail-content').innerHTML = `
     <img class="sheet-poster" src="${e.poster}" onerror="this.style.display='none'">
@@ -1641,74 +1667,50 @@ function openDetail(id) {
     </div>
     ${e.synopsis ? `<div class="sheet-synopsis">${e.synopsis}</div>` : ''}
     <hr class="sheet-divider">
-    <div class="sheet-rating-block">
-      <div class="sheet-rating-card">
-        <div class="sheet-rating-name">Adya</div>
-        <div class="sheet-rating-stars">${aRated ? starsA : '<span class="not-rated">not yet rated</span>'}</div>
-        ${e.adyaNote ? `<div class="sheet-rating-note">"${e.adyaNote}"</div>` : ''}
-      </div>
-      <div class="sheet-rating-card">
-        <div class="sheet-rating-name">Vishak</div>
-        <div class="sheet-rating-stars">${vRated ? starsV : '<span class="not-rated">not yet rated</span>'}</div>
-        ${e.vishakNote ? `<div class="sheet-rating-note">"${e.vishakNote}"</div>` : ''}
-      </div>
+    
+    <!-- Your rating (editable) -->
+    <div class="sheet-rating-card editable-card">
+      <div class="sheet-rating-name">${currentUser} <span class="edit-hint">tap to rate</span></div>
+      <div class="tap-stars" id="my-stars">${myStarsHtml}</div>
+      <input class="inline-note" id="my-note" placeholder="your note..." value="${myNote.replace(/"/g, '&quot;')}">
+      <button class="inline-save-btn" id="save-btn" onclick="saveMyRating(${id})">SAVE</button>
     </div>
-    <button class="edit-rating-btn" onclick="openEditRating(${id})">${editLabel}</button>
+    
+    <!-- Other person's rating (read-only) -->
+    <div class="sheet-rating-card">
+      <div class="sheet-rating-name">${otherName}</div>
+      <div class="sheet-rating-stars">${otherRated ? otherStars : '<span class="not-rated">not yet rated</span>'}</div>
+      ${otherNote ? `<div class="sheet-rating-note">"${otherNote}"</div>` : ''}
+    </div>
   `;
   
   document.getElementById('detail-overlay').classList.add('open');
   document.getElementById('detail-sheet').classList.add('open');
+  
+  // Show save button when note changes
+  document.getElementById('my-note').addEventListener('input', () => {
+    document.getElementById('save-btn').classList.add('show');
+  });
+  tappedRating = myRating;
 }
 
-function closeDetail() {
-  document.getElementById('detail-overlay').classList.remove('open');
-  document.getElementById('detail-sheet').classList.remove('open');
+let tappedRating = 0;
+
+function tapStar(id, n) {
+  tappedRating = n;
+  document.querySelectorAll('#my-stars .tap-star').forEach((s, i) => {
+    s.classList.toggle('lit', i < n);
+  });
+  // Show save button
+  document.getElementById('save-btn').classList.add('show');
 }
 
-// ═══════════════════ EDIT RATING ═══════════════════
-function openEditRating(id) {
+async function saveMyRating(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
-  const isAdya = currentUser === 'Adya';
-  const currentRating = isAdya ? (e.adyaRating || 0) : (e.vishakRating || 0);
-  const currentNote = isAdya ? (e.adyaNote || '') : (e.vishakNote || '');
   
-  // Build inline star editor
-  const starsHtml = [5,4,3,2,1].map(n => {
-    const checked = n === currentRating ? ' checked' : '';
-    return `<input type="radio" name="edit-stars" value="${n}" id="es${n}"${checked}><label for="es${n}">★</label>`;
-  }).join('');
-  
-  const editHtml = `
-    <div class="edit-inline">
-      <div class="edit-inline-title">${currentUser}'s rating for ${e.title}</div>
-      <div class="star-input" id="edit-star-input">${starsHtml}</div>
-      <input class="form-input" id="edit-note" placeholder="${currentUser}'s note..." value="${currentNote.replace(/"/g, '&quot;')}" style="margin-top:8px">
-      <div class="edit-inline-actions">
-        <button class="edit-save-btn" onclick="saveEditRating(${id})">SAVE</button>
-        <button class="edit-cancel-btn" onclick="openDetail(${id})">CANCEL</button>
-      </div>
-    </div>
-  `;
-  
-  // Replace the rating block + edit button
-  const content = document.getElementById('detail-content');
-  const divider = content.querySelector('.sheet-divider');
-  // Remove everything after divider
-  let node = divider.nextElementSibling;
-  while (node) {
-    const next = node.nextElementSibling;
-    node.remove();
-    node = next;
-  }
-  divider.insertAdjacentHTML('afterend', editHtml);
-}
-
-async function saveEditRating(id) {
-  const e = entries.find(x => x.id === id);
-  if (!e) return;
-  const rating = parseInt(document.querySelector('input[name="edit-stars"]:checked')?.value || 0);
-  const note = document.getElementById('edit-note').value.trim();
+  const rating = tappedRating || (currentUser === 'Adya' ? e.adyaRating : e.vishakRating) || 0;
+  const note = document.getElementById('my-note').value.trim();
   
   if (currentUser === 'Adya') {
     e.adyaRating = rating;
@@ -1718,9 +1720,26 @@ async function saveEditRating(id) {
     e.vishakNote = note;
   }
   
+  // Flash the button
+  const btn = document.getElementById('save-btn');
+  btn.textContent = '✓ SAVED';
+  btn.classList.add('saved');
+  
   await saveEntries();
   renderBoard();
-  openDetail(id); // refresh the detail view
+  
+  setTimeout(() => {
+    btn.textContent = 'SAVE';
+    btn.classList.remove('saved');
+    btn.classList.remove('show');
+    tappedRating = 0;
+  }, 800);
+}
+
+function closeDetail() {
+  document.getElementById('detail-overlay').classList.remove('open');
+  document.getElementById('detail-sheet').classList.remove('open');
+  tappedRating = 0;
 }
 
 function formatDate(d) {
