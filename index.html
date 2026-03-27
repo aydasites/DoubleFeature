@@ -1141,6 +1141,37 @@ html, body {
   box-shadow: 0 4px 15px rgba(57,255,20,0.4);
 }
 
+/* Sync toast */
+.sync-toast {
+  position: fixed;
+  bottom: 96px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  font-family: 'VT323', monospace;
+  font-size: 0.9rem;
+  padding: 8px 20px;
+  border-radius: 8px;
+  z-index: 999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  letter-spacing: 1px;
+}
+.sync-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.sync-toast.success {
+  background: rgba(57,255,20,0.15);
+  border: 1px solid rgba(57,255,20,0.3);
+  color: var(--neon-green);
+}
+.sync-toast.error {
+  background: rgba(255,61,90,0.15);
+  border: 1px solid rgba(255,61,90,0.3);
+  color: var(--neon-red);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -1289,30 +1320,17 @@ html, body {
     <input class="form-input" id="form-mood" placeholder="e.g. cozy night in, date night...">
   </div>
 
-  <!-- Adya's rating -->
+  <!-- Your rating only -->
   <div class="form-group">
-    <label class="form-label">ADYA'S RATING</label>
-    <div class="star-input" id="stars-adya">
-      <input type="radio" name="adya" value="5" id="a5"><label for="a5">★</label>
-      <input type="radio" name="adya" value="4" id="a4"><label for="a4">★</label>
-      <input type="radio" name="adya" value="3" id="a3"><label for="a3">★</label>
-      <input type="radio" name="adya" value="2" id="a2"><label for="a2">★</label>
-      <input type="radio" name="adya" value="1" id="a1"><label for="a1">★</label>
+    <label class="form-label" id="rating-label">YOUR RATING</label>
+    <div class="star-input" id="stars-mine">
+      <input type="radio" name="myrating" value="5" id="m5"><label for="m5">★</label>
+      <input type="radio" name="myrating" value="4" id="m4"><label for="m4">★</label>
+      <input type="radio" name="myrating" value="3" id="m3"><label for="m3">★</label>
+      <input type="radio" name="myrating" value="2" id="m2"><label for="m2">★</label>
+      <input type="radio" name="myrating" value="1" id="m1"><label for="m1">★</label>
     </div>
-    <input class="form-input" id="note-adya" placeholder="Adya's note..." style="margin-top:6px">
-  </div>
-
-  <!-- Vishak's rating -->
-  <div class="form-group">
-    <label class="form-label">VISHAK'S RATING</label>
-    <div class="star-input" id="stars-vishak">
-      <input type="radio" name="vishak" value="5" id="v5"><label for="v5">★</label>
-      <input type="radio" name="vishak" value="4" id="v4"><label for="v4">★</label>
-      <input type="radio" name="vishak" value="3" id="v3"><label for="v3">★</label>
-      <input type="radio" name="vishak" value="2" id="v2"><label for="v2">★</label>
-      <input type="radio" name="vishak" value="1" id="v1"><label for="v1">★</label>
-    </div>
-    <input class="form-input" id="note-vishak" placeholder="Vishak's note..." style="margin-top:6px">
+    <input class="form-input" id="note-mine" placeholder="your note..." style="margin-top:6px">
   </div>
 
   <button class="submit-btn" id="submit-btn" onclick="submitEntry()">ADD TO BOARD</button>
@@ -1483,8 +1501,14 @@ async function showBoard() {
   renderBoard();
 }
 
+function showToast(msg, type) {
+  const t = document.getElementById('sync-toast');
+  t.textContent = msg;
+  t.className = 'sync-toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
 async function loadEntries() {
-  // Try GitHub first
   try {
     const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`, {
       headers: { 'Authorization': `token ${GH_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
@@ -1496,36 +1520,25 @@ async function loadEntries() {
       const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
       entries = JSON.parse(decoded);
       localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
-      console.log('✓ Loaded from GitHub:', entries.length, 'entries');
       return;
     } else if (res.status === 404) {
-      console.log('movies.json not found on GitHub yet — will create on first save');
-    } else {
-      console.error('GitHub load error:', res.status);
+      console.log('movies.json not found yet — will create on first save');
     }
   } catch (err) {
-    console.warn('GitHub fetch failed, using local cache:', err);
+    console.warn('GitHub load failed:', err);
+    showToast('OFFLINE — using cached data', 'error');
   }
-  // Fallback to localStorage
   const saved = localStorage.getItem('doublefeature_entries');
-  if (saved) {
-    entries = JSON.parse(saved);
-    console.log('✓ Loaded from cache:', entries.length, 'entries');
-  }
+  if (saved) entries = JSON.parse(saved);
 }
 
 async function saveEntries() {
-  // Always save locally first
   localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
   
-  // Sync to GitHub
   try {
     const jsonStr = JSON.stringify(entries, null, 2);
     const content = btoa(unescape(encodeURIComponent(jsonStr)));
-    const body = {
-      message: `update movies.json — ${new Date().toLocaleDateString('en-IN')}`,
-      content: content
-    };
+    const body = { message: 'update', content };
     if (ghSha) body.sha = ghSha;
     
     const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`, {
@@ -1541,20 +1554,18 @@ async function saveEntries() {
     if (res.ok) {
       const data = await res.json();
       ghSha = data.content.sha;
-      console.log('✓ Saved to GitHub');
+      showToast('✓ SYNCED', 'success');
     } else {
       const errText = await res.text();
-      console.error('GitHub save failed:', res.status, errText);
-      // If SHA mismatch (409), re-fetch and retry once
+      console.error('Save failed:', res.status, errText);
+      showToast('SYNC FAILED — saved locally', 'error');
       if (res.status === 409) {
-        console.log('SHA conflict — refetching...');
         await loadEntries();
-        // Merge: our local changes win
-        localStorage.setItem('doublefeature_entries', JSON.stringify(entries));
       }
     }
   } catch (err) {
-    console.error('GitHub save error:', err);
+    console.error('Save error:', err);
+    showToast('SYNC FAILED — saved locally', 'error');
   }
 }
 
@@ -1756,6 +1767,8 @@ function openAddForm() {
   document.getElementById('add-overlay').classList.add('open');
   document.getElementById('add-sheet').classList.add('open');
   document.getElementById('form-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('rating-label').textContent = currentUser.toUpperCase() + "'S RATING";
+  document.getElementById('note-mine').placeholder = currentUser + "'s note...";
 }
 
 function closeAddForm() {
@@ -1875,8 +1888,9 @@ document.getElementById('event-image').addEventListener('input', function() {
 
 // ═══════════════════ SUBMIT ═══════════════════
 async function submitEntry() {
-  const adyaRating = parseInt(document.querySelector('input[name="adya"]:checked')?.value || 0);
-  const vishakRating = parseInt(document.querySelector('input[name="vishak"]:checked')?.value || 0);
+  const myRating = parseInt(document.querySelector('input[name="myrating"]:checked')?.value || 0);
+  const myNote = document.getElementById('note-mine').value.trim();
+  const isAdya = currentUser === 'Adya';
   
   let entry;
   
@@ -1894,8 +1908,11 @@ async function submitEntry() {
       director: '', cast: '', runtime: '',
       date: document.getElementById('form-date').value,
       mood: document.getElementById('form-mood').value.trim(),
-      adyaRating, adyaNote: document.getElementById('note-adya').value.trim(),
-      vishakRating, vishakNote: document.getElementById('note-vishak').value.trim()
+      adyaRating: isAdya ? myRating : 0,
+      adyaNote: isAdya ? myNote : '',
+      vishakRating: isAdya ? 0 : myRating,
+      vishakNote: isAdya ? '' : myNote,
+      addedBy: currentUser
     };
   } else {
     if (!selectedTMDB) { alert('Search and select a title first!'); return; }
@@ -1912,8 +1929,11 @@ async function submitEntry() {
       runtime: selectedTMDB.runtime,
       date: document.getElementById('form-date').value,
       mood: document.getElementById('form-mood').value.trim(),
-      adyaRating, adyaNote: document.getElementById('note-adya').value.trim(),
-      vishakRating, vishakNote: document.getElementById('note-vishak').value.trim()
+      adyaRating: isAdya ? myRating : 0,
+      adyaNote: isAdya ? myNote : '',
+      vishakRating: isAdya ? 0 : myRating,
+      vishakNote: isAdya ? '' : myNote,
+      addedBy: currentUser
     };
   }
   
@@ -1939,9 +1959,8 @@ function resetForm() {
   document.getElementById('type-film').classList.add('active-film');
   document.getElementById('tmdb-fields').classList.remove('hide');
   document.getElementById('event-fields').classList.remove('show');
-  document.querySelectorAll('input[name="adya"], input[name="vishak"]').forEach(r => r.checked = false);
-  document.getElementById('note-adya').value = '';
-  document.getElementById('note-vishak').value = '';
+  document.querySelectorAll('input[name="myrating"]').forEach(r => r.checked = false);
+  document.getElementById('note-mine').value = '';
   document.getElementById('form-mood').value = '';
   document.getElementById('event-title').value = '';
   document.getElementById('event-image').value = '';
@@ -1965,5 +1984,6 @@ document.addEventListener('click', (e) => {
   }
 });
 </script>
+<div class="sync-toast" id="sync-toast"></div>
 </body>
 </html>
